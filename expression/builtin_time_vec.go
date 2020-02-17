@@ -1732,11 +1732,73 @@ func (b *builtinToDaysSig) vecEvalInt(input *chunk.Chunk, result *chunk.Column) 
 }
 
 func (b *builtinDateFormatSig) vectorized() bool {
-	return false
+	return true
 }
 
 func (b *builtinDateFormatSig) vecEvalString(input *chunk.Chunk, result *chunk.Column) error {
-	return errors.Errorf("not implemented")
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get(types.ETDatetime, n)
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[0].VecEvalTime(b.ctx, input, buf); err != nil {
+		return err
+	}
+	buf0, err := b.bufAllocator.get(types.ETInt, n)
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[0].VecEvalInt(b.ctx, input, buf0); err != nil {
+		return err
+	}
+	buf1, err := b.bufAllocator.get(types.ETString, n)
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf1)
+	if err := b.args[1].VecEvalString(b.ctx, input, buf1); err != nil {
+		return err
+	}
+
+	result.ReserveString(n)
+	ds := buf.Times()
+	i64s := buf0.Int64s()
+	for i := 0; i < n; i++ {
+		if buf.IsNull(i) || buf1.IsNull(i) {
+			result.AppendNull()
+			continue
+		}
+		formatMask := buf1.GetString(i)
+		// MySQL compatibility, #11203
+		// If format mask is 0 then return 0 without warnings
+		if formatMask == "0" {
+			result.AppendString("0")
+			continue
+		}
+		t := ds[i]
+		if t.InvalidZero() {
+			// MySQL compatibility, #11203
+			// 0 | 0.0 should be converted to null without warnings
+			n := i64s[i]
+			isNullInt := buf0.IsNull(i)
+			isOriginalIntOrDecimalZero := n == 0 && !isNullInt
+			// Args like "0000-00-00", "0000-00-00 00:00:00" set Fsp to 6
+			isOriginalStringZero := t.Fsp() > 0
+			if isOriginalIntOrDecimalZero && !isOriginalStringZero {
+				result.AppendNull()
+				continue
+			}
+			return handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
+		}
+		res, err := t.DateFormat(formatMask)
+		if err != nil {
+			return err
+		}
+		result.AppendString(res)
+	}
+	return nil
 }
 
 func (b *builtinHourSig) vectorized() bool {

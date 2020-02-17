@@ -450,7 +450,7 @@ func (g *timeFormatGener) gen() interface{} {
 	if g.randGen.Float64() < g.nullRation {
 		return nil
 	}
-	switch g.randGen.Uint32() % 4 {
+	switch g.randGen.Uint32() % 5 {
 	case 0:
 		return "%H %i %S"
 	case 1:
@@ -461,6 +461,39 @@ func (g *timeFormatGener) gen() interface{} {
 		return "%I %i %S %f"
 	case 4:
 		return "%T"
+	default:
+		return nil
+	}
+}
+
+type dateFormatGener struct {
+	nullRation float64
+	randGen    *defaultRandGen
+}
+
+func newDateFormatGener(nullRation float64) *dateFormatGener {
+	return &dateFormatGener{nullRation, newDefaultRandGen()}
+}
+
+func (g *dateFormatGener) gen() interface{} {
+	if g.randGen.Float64() < g.nullRation {
+		return nil
+	}
+	switch g.randGen.Uint32() % 7 {
+	case 0:
+		return "0"
+	case 1:
+		return "%W %M %Y"
+	case 2:
+		return "%H:%i:%s"
+	case 3:
+		return "%D %y %a %d %m %b %j"
+	case 4:
+		return "%H %k %I %r %T %S %w"
+	case 5:
+		return "%X %V"
+	case 6:
+		return "%d"
 	default:
 		return nil
 	}
@@ -713,7 +746,7 @@ func (g *dateTimeGener) gen() interface{} {
 	return t
 }
 
-// dateTimeStrGener is used to generate strings which are dataTime format
+// dateTimeStrGener is used to generate strings which are dateTime format
 type dateTimeStrGener struct {
 	Fsp     int
 	Year    int
