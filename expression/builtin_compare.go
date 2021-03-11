@@ -15,7 +15,9 @@ package expression
 
 import (
 	"math"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/pingcap/parser/ast"
 	"github.com/pingcap/parser/mysql"
@@ -1381,8 +1383,31 @@ func (c *compareFunctionClass) refineArgs(ctx sessionctx.Context, args []Express
 		}
 	}
 	// year type [cmp] int constant
-	if arg1IsCon && arg1IsInt && arg0Type.Tp == mysql.TypeYear && !arg1.Value.IsNull() {
-		adjusted, failed := types.AdjustYear(arg1.Value.GetInt64(), false)
+	if arg1IsCon && arg0Type.Tp == mysql.TypeYear && !arg1.Value.IsNull() {
+		yearVal := int64(0)
+		if !arg1IsInt {
+			intCnt := 0
+			yearStr := arg1.Value.GetString()
+			for _, r := range []rune(yearStr) {
+				if unicode.IsDigit(r) {
+					intCnt++
+				} else {
+					break
+				}
+			}
+			if intCnt == 0 {
+				ctx.GetSessionVars().StmtCtx.AppendWarning(errTruncatedWrongValue.GenWithStackByArgs("DOUBLE", yearStr))
+			} else {
+				val, err := strconv.ParseInt(yearStr[0:intCnt], 10, 64)
+				if err != nil {
+					ctx.GetSessionVars().StmtCtx.AppendWarning(errTruncatedWrongValue.GenWithStackByArgs("DOUBLE", yearStr))
+				}
+				yearVal = val
+			}
+		} else {
+			yearVal = arg1.Value.GetInt64()
+		}
+		adjusted, failed := types.AdjustYear(yearVal, false)
 		if failed == nil {
 			arg1.Value.SetInt64(adjusted)
 			finalArg1 = arg1
